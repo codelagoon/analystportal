@@ -1,65 +1,97 @@
-import Image from "next/image";
+import Link from 'next/link'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
+      <div className="container mx-auto px-4 py-16">
+        <div className="text-center mb-12">
+          <h1 className="text-5xl font-bold text-gray-900 dark:text-white mb-4">
+            Analyst Portal
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="text-xl text-gray-600 dark:text-gray-300">
+            Weekly meeting system with recurring Zoom sessions
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+          <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle className="text-2xl">Student Portal</CardTitle>
+              <CardDescription>
+                View your assignments, submit work, and join review meetings
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Access your assignment list, view details, and join Zoom meetings for your scheduled review sessions.
+                </p>
+                <Link href="/assignments">
+                  <Button className="w-full" size="lg">
+                    View Assignments
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle className="text-2xl">Admin Dashboard</CardTitle>
+              <CardDescription>
+                Manage recurring meetings and assignment scheduling
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Configure Monday, Wednesday, and Friday recurring Zoom meetings. Link assignments to meeting days.
+                </p>
+                <Link href="/admin/recurring-meetings">
+                  <Button className="w-full" size="lg" variant="outline">
+                    Manage Meetings
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
         </div>
-      </main>
+
+        <div className="mt-16 max-w-4xl mx-auto">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xl">How It Works</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
+                <div className="text-center">
+                  <div className="text-3xl mb-2">📅</div>
+                  <h3 className="font-semibold mb-1">Recurring Meetings</h3>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    Three weekly Zoom meetings (Mon, Wed, Fri) for review sessions
+                  </p>
+                </div>
+                <div className="text-center">
+                  <div className="text-3xl mb-2">🔗</div>
+                  <h3 className="font-semibold mb-1">Link Assignments</h3>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    Assignments are tagged with a meeting day for scheduled reviews
+                  </p>
+                </div>
+                <div className="text-center">
+                  <div className="text-3xl mb-2">🎯</div>
+                  <h3 className="font-semibold mb-1">One Click Join</h3>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    Students see the correct recurring meeting link on each assignment
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
-  );
+  )
 }
