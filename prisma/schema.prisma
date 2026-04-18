@@ -1,0 +1,52 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum MeetingDay {
+  MONDAY
+  WEDNESDAY
+  FRIDAY
+}
+
+model RecurringMeeting {
+  id             String      @id @default(cuid())
+  dayOfWeek      MeetingDay
+  title          String
+  zoomMeetingId  String?     @unique
+  zoomJoinUrl    String?
+  zoomStartUrl   String?
+  scheduledTime  String?     // Format: "14:00" for 2:00 PM
+  active         Boolean     @default(true)
+  notes          String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  assignments    Assignment[]
+}
+
+model Assignment {
+  id                String            @id @default(cuid())
+  title             String
+  description       String?
+  type              String?
+  company           String?
+  sector            String?
+  dueDate           DateTime?
+  reviewer          String?
+  recurringMeeting  RecurringMeeting? @relation(fields: [recurringMeetingId], references: [id])
+  recurringMeetingId String?
+  meetingDay        MeetingDay?
+  submissionUrl     String?
+  feedback          String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+}
