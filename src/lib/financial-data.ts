@@ -10,7 +10,7 @@ type FinancialQuote = {
 const DEFAULT_API_BASE_URL = 'https://financialmodelingprep.com/api/v3'
 const STOOQ_BASE_URL = 'https://stooq.com/q/l/'
 const FINANCIALDATA_NET_BASE_URL = 'https://api.financialdata.net/quote'
-const FINANCIALDATA_NET_API_KEY = '5b136ea2fe745b258da0e069bddb5163'
+const FINANCIALDATA_NET_API_KEY = process.env.FINANCIALDATA_NET_API_KEY || '5b136ea2fe745b258da0e069bddb5163'
 
 const STOOQ_SYMBOL_OVERRIDES: Record<string, string> = {
   SPY: 'spy.us',
