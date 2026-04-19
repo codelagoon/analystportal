@@ -54,88 +54,82 @@ async function main() {
 
   console.log('Created recurring meetings:', { mondayMeeting, wednesdayMeeting, fridayMeeting })
 
-  // Create assignments
-  const assignment1 = await prisma.assignment.create({
-    data: {
-      title: 'Financial Analysis Project',
-      description: 'Analyze the financial statements of a public company and provide investment recommendations.',
-      type: 'Research',
-      company: 'TechCorp Inc.',
-      sector: 'Technology',
-      dueDate: new Date('2026-04-25T14:00:00'),
-      reviewer: 'John Smith',
-      recurringMeetingId: mondayMeeting.id,
-      meetingDay: MeetingDay.MONDAY,
-      submissionUrl: null,
-      feedback: null,
+  const users = [
+    {
+      email: 'maya@echelonequity.co',
+      name: 'Maya Tran',
+      role: 'Senior Analyst',
+      cohort: 'Spring 2026',
+      status: 'Active',
+    },
+    {
+      email: 'alex@echelonequity.co',
+      name: 'Alex Patel',
+      role: 'Analyst',
+      cohort: 'Spring 2026',
+      status: 'Active',
+    },
+  ]
+
+  for (const user of users) {
+    await prisma.analystUser.upsert({
+      where: { email: user.email },
+      update: user,
+      create: user,
+    })
+  }
+
+  await prisma.homepageSettings.upsert({
+    where: { id: 'homepage-settings' },
+    update: {
+      bannerTitle: 'Weekly research briefings and live assignment reviews',
+      bannerBody: 'Banner copy is managed from the admin homepage editor and reflected on the public landing page.',
+      bannerStartAt: '2026-04-18T08:00:00.000Z',
+      bannerEndAt: '2026-04-19T08:00:00.000Z',
+    },
+    create: {
+      id: 'homepage-settings',
+      bannerTitle: 'Weekly research briefings and live assignment reviews',
+      bannerBody: 'Banner copy is managed from the admin homepage editor and reflected on the public landing page.',
+      bannerStartAt: '2026-04-18T08:00:00.000Z',
+      bannerEndAt: '2026-04-19T08:00:00.000Z',
     },
   })
 
-  const assignment2 = await prisma.assignment.create({
-    data: {
-      title: 'Market Research Report',
-      description: 'Conduct market research on the renewable energy sector and identify key trends.',
-      type: 'Analysis',
-      company: 'GreenEnergy Ltd.',
-      sector: 'Energy',
-      dueDate: new Date('2026-04-23T15:00:00'),
-      reviewer: 'Sarah Johnson',
-      recurringMeetingId: wednesdayMeeting.id,
-      meetingDay: MeetingDay.WEDNESDAY,
-      submissionUrl: null,
-      feedback: null,
+  const homepageFeatures = [
+    {
+      id: 'homepage-feature-ai-capex',
+      title: 'AI Infrastructure Capex: Cycle Duration and Margin Structure',
+      author: 'M. Tran',
+      status: 'Featured',
+      position: 0,
+      active: true,
     },
-  })
-
-  const assignment3 = await prisma.assignment.create({
-    data: {
-      title: 'Competitive Analysis',
-      description: 'Analyze the competitive landscape of the e-commerce industry.',
-      type: 'Strategy',
-      company: 'RetailMax',
-      sector: 'Retail',
-      dueDate: new Date('2026-04-25T16:00:00'),
-      reviewer: 'Mike Davis',
-      recurringMeetingId: fridayMeeting.id,
-      meetingDay: MeetingDay.FRIDAY,
-      submissionUrl: null,
-      feedback: null,
+    {
+      id: 'homepage-feature-managed-care',
+      title: 'Managed Care Revision Risk in 2H26',
+      author: 'A. Patel',
+      status: 'Queued',
+      position: 1,
+      active: true,
     },
-  })
-
-  const assignment4 = await prisma.assignment.create({
-    data: {
-      title: 'Valuation Model',
-      description: 'Build a DCF valuation model for a mid-cap company.',
-      type: 'Modeling',
-      company: 'FinanceGroup',
-      sector: 'Financial Services',
-      dueDate: new Date('2026-04-30T14:00:00'),
-      reviewer: 'Emily Chen',
-      recurringMeetingId: mondayMeeting.id,
-      meetingDay: MeetingDay.MONDAY,
-      submissionUrl: null,
-      feedback: null,
+    {
+      id: 'homepage-feature-renewables',
+      title: 'Renewable Yield Vehicles and Cost of Capital Compression',
+      author: 'S. Carter',
+      status: 'Featured',
+      position: 2,
+      active: true,
     },
-  })
+  ]
 
-  const assignment5 = await prisma.assignment.create({
-    data: {
-      title: 'Industry Overview',
-      description: 'Provide a comprehensive overview of the healthcare industry.',
-      type: 'Research',
-      company: 'HealthCo',
-      sector: 'Healthcare',
-      dueDate: new Date('2026-05-02T15:00:00'),
-      reviewer: 'David Lee',
-      recurringMeetingId: wednesdayMeeting.id,
-      meetingDay: MeetingDay.WEDNESDAY,
-      submissionUrl: null,
-      feedback: null,
-    },
-  })
-
-  console.log('Created assignments:', { assignment1, assignment2, assignment3, assignment4, assignment5 })
+  for (const feature of homepageFeatures) {
+    await prisma.homepageFeature.upsert({
+      where: { id: feature.id },
+      update: feature,
+      create: feature,
+    })
+  }
 
   console.log('Seed completed successfully!')
 }

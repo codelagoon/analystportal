@@ -1,12 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { toApiError } from '@/lib/api-error'
 import { prisma } from '@/lib/prisma'
-import { MeetingDay } from '@/generated/prisma/client'
+import { isDisplayMeetingDay, toPrismaMeetingDay } from '@/lib/meeting-day'
+import { readOptionalString, requireString } from '@/lib/validation'
 
 export async function GET() {
   try {
     const assignments = await prisma.assignment.findMany({
-      include: {
-        recurringMeeting: true,
+      select: {
+        id: true,
+        title: true,
+        type: true,
+        company: true,
+        sector: true,
+        reviewer: true,
+        dueDate: true,
+        meetingDay: true,
+        createdAt: true,
+        recurringMeeting: {
+          select: {
+            zoomJoinUrl: true,
+          },
+        },
       },
       orderBy: {
         dueDate: 'asc',
@@ -14,7 +29,8 @@ export async function GET() {
     })
     return NextResponse.json(assignments)
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to fetch assignments' }, { status: 500 })
+    const apiError = toApiError(error, 'Failed to fetch assignments')
+    return NextResponse.json({ error: apiError.message }, { status: apiError.status })
   }
 }
 
@@ -34,18 +50,24 @@ export async function POST(request: NextRequest) {
       submissionUrl 
     } = body
 
+    if (!isDisplayMeetingDay(meetingDay)) {
+      return NextResponse.json({ error: 'Meeting day is invalid' }, { status: 400 })
+    }
+
+    const normalizedMeetingDay = toPrismaMeetingDay(meetingDay)
+
     const assignment = await prisma.assignment.create({
       data: {
-        title,
+        title: requireString(title, 'Title'),
         description,
-        type,
-        company,
-        sector,
+        type: readOptionalString(type),
+        company: readOptionalString(company),
+        sector: readOptionalString(sector),
         dueDate: dueDate ? new Date(dueDate) : null,
-        reviewer,
+        reviewer: requireString(reviewer, 'Reviewer'),
         recurringMeetingId,
-        meetingDay: meetingDay ? (meetingDay as MeetingDay) : null,
-        submissionUrl,
+        meetingDay: normalizedMeetingDay,
+        submissionUrl: readOptionalString(submissionUrl),
       },
       include: {
         recurringMeeting: true,
@@ -54,6 +76,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(assignment, { status: 201 })
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to create assignment' }, { status: 500 })
+    const apiError = toApiError(error, 'Failed to create assignment')
+    return NextResponse.json({ error: apiError.message }, { status: apiError.status })
   }
 }

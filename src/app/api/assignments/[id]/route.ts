@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { toApiError } from '@/lib/api-error'
 import { prisma } from '@/lib/prisma'
-import { MeetingDay } from '@/generated/prisma/client'
+import { isDisplayMeetingDay, toPrismaMeetingDay } from '@/lib/meeting-day'
+import { readOptionalString, requireString } from '@/lib/validation'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const assignment = await prisma.assignment.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         recurringMeeting: true,
       },
@@ -20,15 +23,17 @@ export async function GET(
 
     return NextResponse.json(assignment)
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to fetch assignment' }, { status: 500 })
+    const apiError = toApiError(error, 'Failed to fetch assignment')
+    return NextResponse.json({ error: apiError.message }, { status: apiError.status })
   }
 }
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const body = await request.json()
     const { 
       title, 
@@ -44,20 +49,26 @@ export async function PUT(
       feedback
     } = body
 
+    if (meetingDay !== undefined && meetingDay !== null && !isDisplayMeetingDay(meetingDay)) {
+      return NextResponse.json({ error: 'Meeting day is invalid' }, { status: 400 })
+    }
+
+    const normalizedMeetingDay = isDisplayMeetingDay(meetingDay) ? toPrismaMeetingDay(meetingDay) : null
+
     const assignment = await prisma.assignment.update({
-      where: { id: params.id },
+      where: { id },
       data: {
-        title,
+        title: requireString(title, 'Title'),
         description,
-        type,
-        company,
-        sector,
+        type: readOptionalString(type),
+        company: readOptionalString(company),
+        sector: readOptionalString(sector),
         dueDate: dueDate ? new Date(dueDate) : undefined,
-        reviewer,
+        reviewer: requireString(reviewer, 'Reviewer'),
         recurringMeetingId,
-        meetingDay: meetingDay ? (meetingDay as MeetingDay) : undefined,
-        submissionUrl,
-        feedback,
+        meetingDay: normalizedMeetingDay ?? undefined,
+        submissionUrl: readOptionalString(submissionUrl),
+        feedback: readOptionalString(feedback),
       },
       include: {
         recurringMeeting: true,
@@ -66,21 +77,24 @@ export async function PUT(
 
     return NextResponse.json(assignment)
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to update assignment' }, { status: 500 })
+    const apiError = toApiError(error, 'Failed to update assignment')
+    return NextResponse.json({ error: apiError.message }, { status: apiError.status })
   }
 }
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     await prisma.assignment.delete({
-      where: { id: params.id },
+      where: { id },
     })
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to delete assignment' }, { status: 500 })
+    const apiError = toApiError(error, 'Failed to delete assignment')
+    return NextResponse.json({ error: apiError.message }, { status: apiError.status })
   }
 }

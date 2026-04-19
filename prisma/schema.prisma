@@ -10,13 +10,19 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = "file:./dev.db"
+  url      = env("DATABASE_URL")
 }
 
 enum MeetingDay {
   MONDAY
   WEDNESDAY
   FRIDAY
+}
+
+enum NotificationKind {
+  ASSIGNMENT
+  MEETING
+  SECTOR
 }
 
 model RecurringMeeting {
@@ -50,4 +56,47 @@ model Assignment {
   feedback          String?
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
+}
+
+model AnalystUser {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  role      String
+  cohort    String
+  status    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model HomepageSettings {
+  id            String   @id
+  bannerTitle   String
+  bannerBody    String
+  bannerStartAt String?
+  bannerEndAt   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model HomepageFeature {
+  id        String   @id @default(cuid())
+  title     String
+  author    String
+  status    String
+  position  Int
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  kind      NotificationKind
+  title     String
+  preview   String
+  href      String
+  active    Boolean          @default(true)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
 }

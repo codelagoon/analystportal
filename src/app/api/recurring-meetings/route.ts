@@ -1,12 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { toApiError } from '@/lib/api-error'
 import { prisma } from '@/lib/prisma'
-import { MeetingDay } from '@/generated/prisma/client'
+import { isDisplayMeetingDay, toPrismaMeetingDay } from '@/lib/meeting-day'
+import { readOptionalString, requireString } from '@/lib/validation'
 
 export async function GET() {
   try {
     const meetings = await prisma.recurringMeeting.findMany({
-      include: {
-        assignments: true,
+      select: {
+        id: true,
+        dayOfWeek: true,
+        title: true,
+        zoomMeetingId: true,
+        zoomJoinUrl: true,
+        zoomStartUrl: true,
+        scheduledTime: true,
+        active: true,
+        notes: true,
+        _count: {
+          select: { assignments: true },
+        },
       },
       orderBy: {
         dayOfWeek: 'asc',
@@ -14,7 +27,8 @@ export async function GET() {
     })
     return NextResponse.json(meetings)
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to fetch recurring meetings' }, { status: 500 })
+    const apiError = toApiError(error, 'Failed to fetch recurring meetings')
+    return NextResponse.json({ error: apiError.message }, { status: apiError.status })
   }
 }
 
@@ -22,16 +36,21 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { dayOfWeek, title, zoomMeetingId, zoomJoinUrl, zoomStartUrl, scheduledTime, notes } = body
+    if (!isDisplayMeetingDay(dayOfWeek)) {
+      return NextResponse.json({ error: 'Day of week is invalid' }, { status: 400 })
+    }
+
+    const normalizedDay = toPrismaMeetingDay(dayOfWeek)
 
     const meeting = await prisma.recurringMeeting.create({
       data: {
-        dayOfWeek: dayOfWeek as MeetingDay,
-        title,
-        zoomMeetingId,
-        zoomJoinUrl,
-        zoomStartUrl,
-        scheduledTime,
-        notes,
+        dayOfWeek: normalizedDay,
+        title: requireString(title, 'Title'),
+        zoomMeetingId: readOptionalString(zoomMeetingId),
+        zoomJoinUrl: readOptionalString(zoomJoinUrl),
+        zoomStartUrl: readOptionalString(zoomStartUrl),
+        scheduledTime: readOptionalString(scheduledTime),
+        notes: readOptionalString(notes),
       },
       include: {
         assignments: true,
@@ -40,6 +59,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(meeting, { status: 201 })
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to create recurring meeting' }, { status: 500 })
+    const apiError = toApiError(error, 'Failed to create recurring meeting')
+    return NextResponse.json({ error: apiError.message }, { status: apiError.status })
   }
 }

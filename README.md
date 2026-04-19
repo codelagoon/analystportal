@@ -29,6 +29,13 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
+## Financial Data
+
+This workspace can use a live financial data provider for company research pages when `FINANCIAL_DATA_API_KEY` is set in `.env.local`.
+The client defaults to a Financial Modeling Prep-style quote endpoint, and you can override the base URL with `FINANCIAL_DATA_API_URL` if your provider uses a different host.
+
+When those values are not present, the app falls back to the built-in mock market data.
+
 ## Deploy on Vercel
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.

@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { toApiError } from '@/lib/api-error'
 import { prisma } from '@/lib/prisma'
-import { MeetingDay } from '@/generated/prisma/client'
+import { isDisplayMeetingDay, toPrismaMeetingDay } from '@/lib/meeting-day'
+import { parseBoolean, readOptionalString, requireString } from '@/lib/validation'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const meeting = await prisma.recurringMeeting.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         assignments: true,
       },
@@ -20,29 +23,36 @@ export async function GET(
 
     return NextResponse.json(meeting)
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to fetch recurring meeting' }, { status: 500 })
+    const apiError = toApiError(error, 'Failed to fetch recurring meeting')
+    return NextResponse.json({ error: apiError.message }, { status: apiError.status })
   }
 }
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const body = await request.json()
     const { dayOfWeek, title, zoomMeetingId, zoomJoinUrl, zoomStartUrl, scheduledTime, active, notes } = body
+    if (dayOfWeek !== undefined && dayOfWeek !== null && !isDisplayMeetingDay(dayOfWeek)) {
+      return NextResponse.json({ error: 'Day of week is invalid' }, { status: 400 })
+    }
+
+    const normalizedDay = isDisplayMeetingDay(dayOfWeek) ? toPrismaMeetingDay(dayOfWeek) : undefined
 
     const meeting = await prisma.recurringMeeting.update({
-      where: { id: params.id },
+      where: { id },
       data: {
-        dayOfWeek: dayOfWeek ? (dayOfWeek as MeetingDay) : undefined,
-        title,
-        zoomMeetingId,
-        zoomJoinUrl,
-        zoomStartUrl,
-        scheduledTime,
-        active,
-        notes,
+        dayOfWeek: normalizedDay ?? undefined,
+        title: requireString(title, 'Title'),
+        zoomMeetingId: readOptionalString(zoomMeetingId),
+        zoomJoinUrl: readOptionalString(zoomJoinUrl),
+        zoomStartUrl: readOptionalString(zoomStartUrl),
+        scheduledTime: readOptionalString(scheduledTime),
+        active: parseBoolean(active),
+        notes: readOptionalString(notes),
       },
       include: {
         assignments: true,
@@ -51,21 +61,36 @@ export async function PUT(
 
     return NextResponse.json(meeting)
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to update recurring meeting' }, { status: 500 })
+    const apiError = toApiError(error, 'Failed to update recurring meeting')
+    return NextResponse.json({ error: apiError.message }, { status: apiError.status })
   }
 }
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await prisma.recurringMeeting.delete({
-      where: { id: params.id },
+    const { id } = await params
+    const result = await prisma.$transaction(async (transaction) => {
+      const { count } = await transaction.assignment.updateMany({
+        where: { recurringMeetingId: id },
+        data: {
+          recurringMeetingId: null,
+          meetingDay: null,
+        },
+      })
+
+      await transaction.recurringMeeting.delete({
+        where: { id },
+      })
+
+      return { unlinkedAssignments: count }
     })
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, ...result })
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to delete recurring meeting' }, { status: 500 })
+    const apiError = toApiError(error, 'Failed to delete recurring meeting')
+    return NextResponse.json({ error: apiError.message }, { status: apiError.status })
   }
 }

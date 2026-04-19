@@ -1,17 +1,25 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { SignInButton, useUser } from '@clerk/nextjs'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { Badge } from '@/components/ui/badge'
+import {
+  AlertBanner,
+  AppShell,
+  DataTable,
+  EmptyState,
+  Panel,
+  SkeletonPanel,
+  StatusPill,
+} from '@/components/terminal/ui-kit'
+import { adminNav } from '@/lib/navigation'
 
-interface RecurringMeeting {
+type MeetingRecord = {
   id: string
-  dayOfWeek: 'MONDAY' | 'WEDNESDAY' | 'FRIDAY'
+  dayOfWeek: string
   title: string
   zoomMeetingId: string | null
   zoomJoinUrl: string | null
@@ -19,288 +27,443 @@ interface RecurringMeeting {
   scheduledTime: string | null
   active: boolean
   notes: string | null
-  assignments: any[]
-  createdAt: string
-  updatedAt: string
+  assignments?: Array<{ id: string }>
+  _count?: { assignments: number }
+}
+
+function getLinkedAssignmentsCount(meeting: MeetingRecord) {
+  if (Array.isArray(meeting.assignments)) {
+    return meeting.assignments.length
+  }
+
+  if (meeting._count && typeof meeting._count.assignments === 'number') {
+    return meeting._count.assignments
+  }
+
+  return 0
+}
+
+type MeetingDraft = {
+  dayOfWeek: string
+  title: string
+  zoomMeetingId: string
+  zoomJoinUrl: string
+  zoomStartUrl: string
+  scheduledTime: string
+  active: boolean
+  notes: string
+}
+
+const blankDraft: MeetingDraft = {
+  dayOfWeek: 'Monday',
+  title: '',
+  zoomMeetingId: '',
+  zoomJoinUrl: '',
+  zoomStartUrl: '',
+  scheduledTime: '',
+  active: true,
+  notes: '',
+}
+
+function displayMeetingDay(value: string | null | undefined) {
+  if (!value) return 'Unassigned'
+  const normalized = value.toLowerCase()
+  if (normalized === 'monday') return 'Monday'
+  if (normalized === 'wednesday') return 'Wednesday'
+  if (normalized === 'friday') return 'Friday'
+  return value
+}
+
+function validateMeetingDraft(draft: MeetingDraft) {
+  if (!draft.dayOfWeek.trim()) return 'Day of week is required'
+  if (!draft.title.trim()) return 'Title is required'
+  return null
 }
 
 export default function RecurringMeetingsPage() {
-  const [meetings, setMeetings] = useState<RecurringMeeting[]>([])
+  const { isLoaded, isSignedIn } = useUser()
+  const [meetings, setMeetings] = useState<MeetingRecord[]>([])
   const [loading, setLoading] = useState(true)
-  const [editingMeeting, setEditingMeeting] = useState<RecurringMeeting | null>(null)
-  const [formData, setFormData] = useState({
-    dayOfWeek: 'MONDAY' as 'MONDAY' | 'WEDNESDAY' | 'FRIDAY',
-    title: '',
-    zoomMeetingId: '',
-    zoomJoinUrl: '',
-    zoomStartUrl: '',
-    scheduledTime: '',
-    active: true,
-    notes: '',
-  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [draft, setDraft] = useState<MeetingDraft>(blankDraft)
+  const [mode, setMode] = useState<'new' | 'edit' | 'idle'>('idle')
+  const hydratedSelectionRef = useRef<string | null>(null)
+
+  const selectedMeeting = useMemo(
+    () => meetings.find((meeting) => meeting.id === selectedId) ?? null,
+    [meetings, selectedId]
+  )
 
   useEffect(() => {
-    fetchMeetings()
-  }, [])
-
-  const fetchMeetings = async () => {
-    try {
-      const response = await fetch('/api/recurring-meetings')
-      const data = await response.json()
-      setMeetings(data)
-    } catch (error) {
-      console.error('Failed to fetch meetings:', error)
-    } finally {
+    if (!isLoaded || !isSignedIn) {
       setLoading(false)
+      return
     }
+
+    const controller = new AbortController()
+
+    async function loadMeetings() {
+      setLoading(true)
+      setError(null)
+      try {
+        const response = await fetch('/api/recurring-meetings', { signal: controller.signal, cache: 'no-store' })
+        if (!response.ok) {
+          throw new Error('Failed to load recurring meetings')
+        }
+
+        const payload = (await response.json()) as MeetingRecord[]
+        setMeetings(payload)
+        if (payload.length > 0) {
+          setSelectedId((current) => current ?? payload[0].id)
+        }
+      } catch (fetchError) {
+        if (!controller.signal.aborted) {
+          setError(fetchError instanceof Error ? fetchError.message : 'Failed to load recurring meetings')
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadMeetings()
+
+    return () => controller.abort()
+  }, [isLoaded, isSignedIn])
+
+  useEffect(() => {
+    if (selectedMeeting && mode === 'edit') {
+      if (hydratedSelectionRef.current === selectedMeeting.id) {
+        return
+      }
+
+      setDraft({
+        dayOfWeek: displayMeetingDay(selectedMeeting.dayOfWeek),
+        title: selectedMeeting.title,
+        zoomMeetingId: selectedMeeting.zoomMeetingId ?? '',
+        zoomJoinUrl: selectedMeeting.zoomJoinUrl ?? '',
+        zoomStartUrl: selectedMeeting.zoomStartUrl ?? '',
+        scheduledTime: selectedMeeting.scheduledTime ?? '',
+        active: selectedMeeting.active,
+        notes: selectedMeeting.notes ?? '',
+      })
+      hydratedSelectionRef.current = selectedMeeting.id
+    }
+  }, [mode, selectedMeeting])
+
+  const tableRows = useMemo(
+    () =>
+      meetings.map((meeting) => [
+        displayMeetingDay(meeting.dayOfWeek),
+        <StatusPill key={`${meeting.id}-active`} label={meeting.active ? 'Active' : 'Inactive'} />,
+        meeting.zoomJoinUrl ? <StatusPill key={`${meeting.id}-join`} label="Configured" /> : <StatusPill key={`${meeting.id}-join`} label="Missing" />,
+        meeting.scheduledTime ?? '-',
+        meeting.notes ?? '-',
+        `${getLinkedAssignmentsCount(meeting)}`,
+        <Button
+          key={`${meeting.id}-edit`}
+          size="xs"
+          variant="outline"
+          className="border-zinc-700 bg-zinc-900 text-zinc-200"
+          onClick={() => selectMeeting(meeting)}
+        >
+          Edit
+        </Button>,
+      ]),
+    [meetings]
+  )
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || saving) {
+      return
+    }
+
+    const intervalId = window.setInterval(() => {
+      void loadMeetings().catch(() => {
+        // Silent retry loop for cross-user sync updates.
+      })
+    }, 10000)
+
+    return () => window.clearInterval(intervalId)
+  }, [isLoaded, isSignedIn, saving])
+
+  if (!isLoaded) {
+    return (
+      <AppShell section="admin" nav={adminNav} title="Recurring Sessions (Admin)" subtitle="This controls the Monday, Wednesday, and Friday schedule analysts join from Meetings / Calendar.">
+        <SkeletonPanel />
+        <SkeletonPanel />
+      </AppShell>
+    )
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    try {
-      const url = editingMeeting
-        ? `/api/recurring-meetings/${editingMeeting.id}`
-        : '/api/recurring-meetings'
-      const method = editingMeeting ? 'PUT' : 'POST'
+  if (!isSignedIn) {
+    return (
+      <AppShell section="admin" nav={adminNav} title="Recurring Sessions (Admin)" subtitle="This controls the Monday, Wednesday, and Friday schedule analysts join from Meetings / Calendar.">
+        <Panel title="Permission restricted" description="Sign in to manage recurring meetings.">
+          <div className="space-y-3 text-sm text-zinc-300">
+            <p>Recurring sessions are read-only until you authenticate.</p>
+            <SignInButton mode="modal">
+              <Button className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200">Sign In</Button>
+            </SignInButton>
+          </div>
+        </Panel>
+      </AppShell>
+    )
+  }
 
-      const response = await fetch(url, {
-        method,
+  async function loadMeetings() {
+    const response = await fetch('/api/recurring-meetings', { cache: 'no-store' })
+    if (!response.ok) {
+      throw new Error('Failed to load recurring meetings')
+    }
+
+    const payload = (await response.json()) as MeetingRecord[]
+    setMeetings(payload)
+    setSelectedId((current) => current ?? payload[0]?.id ?? null)
+    return payload
+  }
+
+  function selectMeeting(meeting: MeetingRecord) {
+    hydratedSelectionRef.current = meeting.id
+    setMode('edit')
+    setSelectedId(meeting.id)
+    setDraft({
+      dayOfWeek: displayMeetingDay(meeting.dayOfWeek),
+      title: meeting.title,
+      zoomMeetingId: meeting.zoomMeetingId ?? '',
+      zoomJoinUrl: meeting.zoomJoinUrl ?? '',
+      zoomStartUrl: meeting.zoomStartUrl ?? '',
+      scheduledTime: meeting.scheduledTime ?? '',
+      active: meeting.active,
+      notes: meeting.notes ?? '',
+    })
+    setSuccess(null)
+    setError(null)
+  }
+
+  function startNewMeeting() {
+    hydratedSelectionRef.current = null
+    setMode('new')
+    setSelectedId(null)
+    setDraft(blankDraft)
+    setSuccess(null)
+    setError(null)
+  }
+
+  function cancelChanges() {
+    if (selectedMeeting) {
+      selectMeeting(selectedMeeting)
+      return
+    }
+
+    hydratedSelectionRef.current = null
+    setMode('idle')
+    setDraft(blankDraft)
+  }
+
+  async function saveMeeting() {
+    const validationMessage = validateMeetingDraft(draft)
+    if (validationMessage) {
+      setError(validationMessage)
+      return
+    }
+
+    setSaving(true)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      const response = await fetch(mode === 'new' ? '/api/recurring-meetings' : `/api/recurring-meetings/${selectedId}`, {
+        method: mode === 'new' ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(draft),
       })
 
-      if (response.ok) {
-        await fetchMeetings()
-        setEditingMeeting(null)
-        setFormData({
-          dayOfWeek: 'MONDAY',
-          title: '',
-          zoomMeetingId: '',
-          zoomJoinUrl: '',
-          zoomStartUrl: '',
-          scheduledTime: '',
-          active: true,
-          notes: '',
-        })
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null
+        throw new Error(payload?.error ?? 'Failed to save meeting')
       }
-    } catch (error) {
-      console.error('Failed to save meeting:', error)
+
+      const savedMeeting = (await response.json()) as MeetingRecord
+      const refreshedMeetings = await loadMeetings()
+      const persisted = refreshedMeetings.find((meeting) => meeting.id === savedMeeting.id) ?? savedMeeting
+      setSelectedId(persisted.id)
+      setMode('edit')
+      setDraft({
+        dayOfWeek: displayMeetingDay(persisted.dayOfWeek),
+        title: persisted.title,
+        zoomMeetingId: persisted.zoomMeetingId ?? '',
+        zoomJoinUrl: persisted.zoomJoinUrl ?? '',
+        zoomStartUrl: persisted.zoomStartUrl ?? '',
+        scheduledTime: persisted.scheduledTime ?? '',
+        active: persisted.active,
+        notes: persisted.notes ?? '',
+      })
+      setSuccess('Recurring meeting saved')
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Failed to save recurring meeting')
+    } finally {
+      setSaving(false)
     }
   }
 
-  const handleEdit = (meeting: RecurringMeeting) => {
-    setEditingMeeting(meeting)
-    setFormData({
-      dayOfWeek: meeting.dayOfWeek,
-      title: meeting.title,
-      zoomMeetingId: meeting.zoomMeetingId || '',
-      zoomJoinUrl: meeting.zoomJoinUrl || '',
-      zoomStartUrl: meeting.zoomStartUrl || '',
-      scheduledTime: meeting.scheduledTime || '',
-      active: meeting.active,
-      notes: meeting.notes || '',
-    })
-  }
+  async function deleteMeeting() {
+    if (!selectedId) {
+      return
+    }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this meeting?')) return
+    setSaving(true)
+    setError(null)
+    setSuccess(null)
+
     try {
-      await fetch(`/api/recurring-meetings/${id}`, { method: 'DELETE' })
-      await fetchMeetings()
-    } catch (error) {
-      console.error('Failed to delete meeting:', error)
+      const response = await fetch(`/api/recurring-meetings/${selectedId}`, { method: 'DELETE' })
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null
+        throw new Error(payload?.error ?? 'Failed to delete recurring meeting')
+      }
+
+      const deletePayload = (await response.json()) as { success: boolean; unlinkedAssignments?: number }
+
+      const refreshedMeetings = await loadMeetings()
+      const nextMeeting = refreshedMeetings[0] ?? null
+      setSelectedId(nextMeeting?.id ?? null)
+      setMode(nextMeeting ? 'edit' : 'idle')
+      if (nextMeeting) {
+        selectMeeting(nextMeeting)
+      } else {
+        setDraft(blankDraft)
+      }
+      const unlinkedCount = deletePayload.unlinkedAssignments ?? 0
+      setSuccess(
+        unlinkedCount > 0
+          ? `Recurring meeting deleted and ${unlinkedCount} linked assignments were unassigned`
+          : 'Recurring meeting deleted'
+      )
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Failed to delete recurring meeting')
+    } finally {
+      setSaving(false)
     }
-  }
-
-  const handleCancel = () => {
-    setEditingMeeting(null)
-    setFormData({
-      dayOfWeek: 'MONDAY',
-      title: '',
-      zoomMeetingId: '',
-      zoomJoinUrl: '',
-      zoomStartUrl: '',
-      scheduledTime: '',
-      active: true,
-      notes: '',
-    })
-  }
-
-  if (loading) {
-    return <div className="p-8">Loading...</div>
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
-      <h1 className="text-3xl font-bold mb-6">Recurring Meetings</h1>
+    <AppShell section="admin" nav={adminNav} title="Recurring Sessions (Admin)" subtitle="This controls the Monday, Wednesday, and Friday schedule analysts join from Meetings / Calendar.">
+      {error && <AlertBanner kind="error" title="Unable to save recurring meetings" detail={error} />}
+      {success && <AlertBanner kind="success" title="Recurring meetings updated" detail={success} />}
 
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>{editingMeeting ? 'Edit Meeting' : 'Create New Meeting'}</CardTitle>
-          <CardDescription>
-            {editingMeeting
-              ? 'Update the recurring meeting details'
-              : 'Create a new recurring weekly meeting'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="dayOfWeek">Day of Week</Label>
-                <Select
-                  value={formData.dayOfWeek}
-                  onValueChange={(value: any) =>
-                    setFormData({ ...formData, dayOfWeek: value })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select day" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="MONDAY">Monday</SelectItem>
-                    <SelectItem value="WEDNESDAY">Wednesday</SelectItem>
-                    <SelectItem value="FRIDAY">Friday</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="title">Title</Label>
-                <Input
-                  id="title"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="scheduledTime">Scheduled Time</Label>
-                <Input
-                  id="scheduledTime"
-                  type="time"
-                  value={formData.scheduledTime}
-                  onChange={(e) => setFormData({ ...formData, scheduledTime: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label htmlFor="zoomMeetingId">Zoom Meeting ID</Label>
-                <Input
-                  id="zoomMeetingId"
-                  value={formData.zoomMeetingId}
-                  onChange={(e) => setFormData({ ...formData, zoomMeetingId: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label htmlFor="zoomJoinUrl">Zoom Join URL</Label>
-                <Input
-                  id="zoomJoinUrl"
-                  type="url"
-                  value={formData.zoomJoinUrl}
-                  onChange={(e) => setFormData({ ...formData, zoomJoinUrl: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label htmlFor="zoomStartUrl">Zoom Start URL</Label>
-                <Input
-                  id="zoomStartUrl"
-                  type="url"
-                  value={formData.zoomStartUrl}
-                  onChange={(e) => setFormData({ ...formData, zoomStartUrl: e.target.value })}
-                />
-              </div>
-            </div>
-            <div>
-              <Label htmlFor="notes">Notes</Label>
-              <Textarea
-                id="notes"
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                rows={3}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="active"
-                checked={formData.active}
-                onChange={(e) => setFormData({ ...formData, active: e.target.checked })}
-                className="w-4 h-4"
-              />
-              <Label htmlFor="active">Active</Label>
-            </div>
-            <div className="flex gap-2">
-              <Button type="submit">{editingMeeting ? 'Update' : 'Create'}</Button>
-              {editingMeeting && (
-                <Button type="button" variant="outline" onClick={handleCancel}>
-                  Cancel
-                </Button>
-              )}
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+      <AlertBanner
+        kind="warning"
+        title="Friday session inactive"
+        detail="If the Friday meeting is left without a join URL, analysts will see the inactive state in the terminal Meetings page."
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {meetings.map((meeting) => (
-          <Card key={meeting.id} className={!meeting.active ? 'opacity-60' : ''}>
-            <CardHeader>
-              <div className="flex justify-between items-start">
-                <CardTitle className="text-lg">{meeting.title}</CardTitle>
-                <Badge variant={meeting.active ? 'default' : 'secondary'}>
-                  {meeting.dayOfWeek}
-                </Badge>
-              </div>
-              <CardDescription>
-                {meeting.scheduledTime && `at ${meeting.scheduledTime}`}
-                {meeting.active ? '' : ' (Inactive)'}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2 text-sm">
-                {meeting.zoomJoinUrl && (
-                  <div>
-                    <span className="font-medium">Join URL:</span>{' '}
-                    <a
-                      href={meeting.zoomJoinUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline"
-                    >
-                      Join Meeting
-                    </a>
-                  </div>
-                )}
-                {meeting.zoomMeetingId && (
-                  <div>
-                    <span className="font-medium">Meeting ID:</span> {meeting.zoomMeetingId}
-                  </div>
-                )}
-                {meeting.notes && (
-                  <div>
-                    <span className="font-medium">Notes:</span> {meeting.notes}
-                  </div>
-                )}
-                <div>
-                  <span className="font-medium">Linked Assignments:</span>{' '}
-                  {meeting.assignments.length}
+      <Panel
+        title="Weekly session controls"
+        description="Set the active state, join URL, start URL, schedule, and notes for each recurring review."
+        actions={
+          <Button size="sm" className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200" onClick={startNewMeeting}>
+            Add Session
+          </Button>
+        }
+      >
+        {loading ? (
+          <SkeletonPanel />
+        ) : meetings.length === 0 ? (
+          <EmptyState
+            title="No recurring meetings yet"
+            detail="Create the first weekly review session so assignments can attach to it."
+            action={
+              <Button className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200" onClick={startNewMeeting}>
+                Create Session
+              </Button>
+            }
+          />
+        ) : (
+          <DataTable
+            columns={['Day', 'Active / Inactive', 'Join URL State', 'Scheduled Time', 'Notes', 'Linked Assignments', 'Actions']}
+            rows={tableRows}
+          />
+        )}
+      </Panel>
+
+      <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+        {mode !== 'idle' ? (
+          <Panel title={mode === 'new' ? 'Create Session' : 'Edit Session'} description="Save or cancel to apply the selected recurring meeting record.">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="meeting-day">Day of Week</Label>
+              <Input id="meeting-day" value={draft.dayOfWeek} onChange={(event) => setDraft((current) => ({ ...current, dayOfWeek: event.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="meeting-title">Title</Label>
+              <Input id="meeting-title" value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="meeting-id">Zoom Meeting ID</Label>
+              <Input id="meeting-id" value={draft.zoomMeetingId} onChange={(event) => setDraft((current) => ({ ...current, zoomMeetingId: event.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="meeting-time">Scheduled Time</Label>
+              <Input id="meeting-time" value={draft.scheduledTime} onChange={(event) => setDraft((current) => ({ ...current, scheduledTime: event.target.value }))} />
+            </div>
+            <div className="space-y-1.5 md:col-span-2">
+              <Label htmlFor="meeting-join-url">Join URL</Label>
+              <Input id="meeting-join-url" value={draft.zoomJoinUrl} onChange={(event) => setDraft((current) => ({ ...current, zoomJoinUrl: event.target.value }))} />
+            </div>
+            <div className="space-y-1.5 md:col-span-2">
+              <Label htmlFor="meeting-notes">Notes</Label>
+              <Textarea id="meeting-notes" value={draft.notes} onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))} />
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Button variant={draft.active ? 'default' : 'outline'} className={draft.active ? 'bg-zinc-100 text-zinc-900 hover:bg-zinc-200' : 'border-zinc-700 bg-zinc-900 text-zinc-200'} onClick={() => setDraft((current) => ({ ...current, active: !current.active }))}>
+              {draft.active ? 'Active' : 'Inactive'}
+            </Button>
+            <StatusPill label={draft.active ? 'Active meeting' : 'Inactive meeting'} />
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200" onClick={saveMeeting} disabled={saving}>
+              {saving ? 'Saving...' : 'Save'}
+            </Button>
+            <Button variant="outline" className="border-zinc-700 bg-zinc-900 text-zinc-200" onClick={cancelChanges} disabled={saving}>
+              Cancel
+            </Button>
+            <Button variant="outline" className="border-zinc-700 bg-zinc-900 text-zinc-200" onClick={deleteMeeting} disabled={saving || !selectedId}>
+              Delete
+            </Button>
+          </div>
+          </Panel>
+        ) : (
+          <Panel title="Select a session to edit" description="Click Edit on a row, or Add Session to create a new recurring meeting.">
+            <div className="space-y-2 text-sm text-zinc-300">
+              <div className="rounded border border-zinc-800 bg-zinc-900/70 p-3">Use Edit to modify an existing recurring meeting.</div>
+              <div className="rounded border border-zinc-800 bg-zinc-900/70 p-3">Use Add Session to create a new recurring meeting.</div>
+            </div>
+          </Panel>
+        )}
+
+        <Panel title="Session linkage" description="Assignments inherit their cadence from these recurring sessions.">
+          <div className="space-y-2 text-sm text-zinc-300">
+            {meetings.map((meeting) => (
+              <div key={meeting.id} className="rounded border border-zinc-800 bg-zinc-900/70 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-zinc-100">{displayMeetingDay(meeting.dayOfWeek)}</p>
+                  <StatusPill label={meeting.active ? 'Active' : 'Inactive'} />
                 </div>
+                <p className="mt-1 text-zinc-500">{meeting.title}</p>
+                <p className="mt-1 text-zinc-500">{getLinkedAssignmentsCount(meeting)} linked assignments</p>
               </div>
-              <div className="flex gap-2 mt-4">
-                <Button size="sm" variant="outline" onClick={() => handleEdit(meeting)}>
-                  Edit
-                </Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  onClick={() => handleDelete(meeting.id)}
-                >
-                  Delete
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+            ))}
+          </div>
+        </Panel>
       </div>
-    </div>
+    </AppShell>
   )
 }
